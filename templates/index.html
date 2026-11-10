@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>StudyLens</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: Arial, sans-serif;
+      background: #f3f4f6;
+      margin: 0;
+      padding: 30px 15px;
+      color: #1f2937;
+    }
+    .container { max-width: 750px; margin: auto; }
+    h1 { margin-bottom: 4px; }
+    .subtitle { color: #6b7280; margin-top: 0; }
+    .card {
+      background: white;
+      border-radius: 10px;
+      padding: 20px;
+      margin-top: 20px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    }
+    h2 { margin-top: 0; font-size: 18px; }
+    input[type="text"] {
+      width: 100%;
+      padding: 10px;
+      font-size: 16px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      margin-bottom: 10px;
+    }
+    button {
+      background: #2563eb;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      font-size: 16px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    button:hover { background: #1d4ed8; }
+    button:disabled { background: #9ca3af; cursor: not-allowed; }
+    .status { margin-top: 10px; font-size: 14px; }
+    .ok { color: #15803d; }
+    .error { color: #b91c1c; }
+    .answer { font-size: 22px; font-weight: bold; margin: 5px 0 10px; }
+    .meta { color: #4b5563; font-size: 14px; margin-bottom: 10px; }
+    .context {
+      background: #f9fafb;
+      border-left: 4px solid #2563eb;
+      padding: 10px;
+      font-size: 14px;
+      color: #374151;
+    }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>StudyLens</h1>
+    <p class="subtitle">Upload a PDF and ask questions about it.</p>
+
+    <!-- Step 1: upload -->
+    <div class="card">
+      <h2>1. Upload your PDF</h2>
+      <input type="file" id="pdfFile" accept=".pdf">
+      <br><br>
+      <button id="uploadBtn">Upload</button>
+      <div id="uploadStatus" class="status"></div>
+    </div>
+
+    <!-- Step 2: ask -->
+    <div class="card">
+      <h2>2. Ask a question</h2>
+      <input type="text" id="question" placeholder="e.g. What technologies were used?">
+      <button id="askBtn">Ask</button>
+      <div id="askStatus" class="status"></div>
+    </div>
+
+    <!-- Answer -->
+    <div class="card hidden" id="answerCard">
+      <h2>Answer</h2>
+      <div class="answer" id="answerText"></div>
+      <div class="meta" id="answerMeta"></div>
+      <div class="context" id="answerContext"></div>
+    </div>
+  </div>
+
+  <script>
+    const uploadBtn = document.getElementById("uploadBtn");
+    const askBtn = document.getElementById("askBtn");
+    const uploadStatus = document.getElementById("uploadStatus");
+    const askStatus = document.getElementById("askStatus");
+    const answerCard = document.getElementById("answerCard");
+
+    function setStatus(element, message, type) {
+      element.textContent = message;
+      element.className = "status " + type;
+    }
+
+    // ---------- Upload ----------
+    uploadBtn.addEventListener("click", async () => {
+      const file = document.getElementById("pdfFile").files[0];
+      if (!file) {
+        setStatus(uploadStatus, "Please choose a PDF first.", "error");
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      uploadBtn.disabled = true;
+      setStatus(uploadStatus, "Uploading and processing... please wait.", "");
+
+      try {
+        const response = await fetch("/upload", { method: "POST", body: formData });
+        const data = await response.json();
+
+        if (response.ok) {
+          setStatus(uploadStatus,
+            "Done! " + data.filename + ": " + data.pages + " pages, " + data.chunks + " chunks.",
+            "ok");
+        } else {
+          setStatus(uploadStatus, data.detail || "Upload failed.", "error");
+        }
+      } catch (err) {
+        setStatus(uploadStatus, "Could not reach the server.", "error");
+      }
+      uploadBtn.disabled = false;
+    });
+
+    // ---------- Ask ----------
+    async function askQuestion() {
+      const question = document.getElementById("question").value.trim();
+      if (!question) {
+        setStatus(askStatus, "Please type a question.", "error");
+        return;
+      }
+
+      askBtn.disabled = true;
+      answerCard.classList.add("hidden");
+      setStatus(askStatus, "Thinking...", "");
+
+      try {
+        const response = await fetch("/ask?question=" + encodeURIComponent(question));
+        const data = await response.json();
+
+        if (!response.ok) {
+          setStatus(askStatus, data.detail || "Something went wrong.", "error");
+        } else {
+          setStatus(askStatus, "", "");
+          document.getElementById("answerText").textContent = data.answer;
+
+          let meta = "Source: Page " + data.page +
+                     "  |  Confidence: " + Math.round(data.confidence * 100) + "%";
+          if (data.confidence < 0.1) {
+            meta += "  |  Low confidence: this may not be in your document.";
+          }
+          document.getElementById("answerMeta").textContent = meta;
+          document.getElementById("answerContext").textContent = data.context;
+          answerCard.classList.remove("hidden");
+        }
+      } catch (err) {
+        setStatus(askStatus, "Could not reach the server.", "error");
+      }
+      askBtn.disabled = false;
+    }
+
+    askBtn.addEventListener("click", askQuestion);
+    document.getElementById("question").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") askQuestion();
+    });
+  </script>
+</body>
+</html>

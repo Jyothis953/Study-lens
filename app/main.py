@@ -1,9 +1,14 @@
+from pathlib import Path
+
 from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.responses import FileResponse
 
 from app.pdf_utils import extract_pages
 from app.chunking import chunk_text
 from app.search import build_index, search
 from app.qa import get_answer
+
+BASE_DIR = Path(__file__).resolve().parent.parent
 
 app = FastAPI(title="StudyLens")
 
@@ -13,7 +18,7 @@ store = {}
 
 @app.get("/")
 def home():
-    return {"message": "StudyLens is running. Open /docs to test it."}
+    return FileResponse(BASE_DIR / "templates" / "index.html")
 
 
 @app.post("/upload")
