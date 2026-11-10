@@ -80,6 +80,19 @@
       <div id="askStatus" class="status"></div>
     </div>
 
+        <div class="card">
+      <h2>3. Document insights</h2>
+      <button id="insightsBtn">Get insights</button>
+      <div id="insightsStatus" class="status"></div>
+      <div id="insightsBox" class="hidden">
+        <p><b>Keywords:</b> <span id="kw"></span></p>
+        <p><b>Summary:</b></p>
+        <ul id="sum"></ul>
+        <p><b>Key terms:</b></p>
+        <div id="ents"></div>
+      </div>
+    </div>
+
     <!-- Answer -->
     <div class="card hidden" id="answerCard">
       <h2>Answer</h2>
@@ -172,6 +185,45 @@
     askBtn.addEventListener("click", askQuestion);
     document.getElementById("question").addEventListener("keydown", (e) => {
       if (e.key === "Enter") askQuestion();
+    });
+
+        const insightsBtn = document.getElementById("insightsBtn");
+    const insightsStatus = document.getElementById("insightsStatus");
+
+    insightsBtn.addEventListener("click", async () => {
+      insightsBtn.disabled = true;
+      setStatus(insightsStatus, "Analysing... please wait.", "");
+      try {
+        const response = await fetch("/insights");
+        const data = await response.json();
+        if (!response.ok) {
+          setStatus(insightsStatus, data.detail || "Something went wrong.", "error");
+        } else {
+          setStatus(insightsStatus, "", "");
+          document.getElementById("kw").textContent = data.keywords.join(", ");
+
+          const list = document.getElementById("sum");
+          list.innerHTML = "";
+          data.summary.forEach(s => {
+            const li = document.createElement("li");
+            li.textContent = s.text + " (page " + s.page + ")";
+            list.appendChild(li);
+          });
+
+          const ents = document.getElementById("ents");
+          ents.innerHTML = "";
+          const names = { PERSON: "People", ORG: "Organisations", GPE: "Places", DATE: "Dates" };
+          for (const label in data.entities) {
+            const p = document.createElement("p");
+            p.textContent = (names[label] || label) + ": " + data.entities[label].join(", ");
+            ents.appendChild(p);
+          }
+          document.getElementById("insightsBox").classList.remove("hidden");
+        }
+      } catch (err) {
+        setStatus(insightsStatus, "Could not reach the server.", "error");
+      }
+      insightsBtn.disabled = false;
     });
   </script>
 </body>

@@ -7,6 +7,7 @@ from app.pdf_utils import extract_pages
 from app.chunking import chunk_text
 from app.search import build_index, search
 from app.qa import get_answer
+from app.nlp_features import get_keywords, summarize, get_entities
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -53,3 +54,16 @@ def ask(question: str):
 
     hits = search(question, store["chunks"], store["embeddings"])
     return get_answer(question, hits)
+
+
+@app.get("/insights")
+def insights():
+    if "chunks" not in store:
+        raise HTTPException(status_code=400, detail="Please upload a PDF first.")
+
+    chunks = store["chunks"]
+    return {
+        "keywords": get_keywords(chunks),
+        "summary": summarize(chunks),
+        "entities": get_entities(chunks),
+    }
