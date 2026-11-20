@@ -9,6 +9,8 @@ from app.search import build_index, search
 from app.qa import get_answer
 from app.nlp_features import get_keywords, summarize, get_entities
 from app.topics import cluster_topics
+from app.classifier import classify_document
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -74,3 +76,12 @@ def topics(n: int = 4):
     if "chunks" not in store:
         raise HTTPException(status_code=400, detail="Please upload a PDF first.")
     return cluster_topics(store["chunks"], store["embeddings"], n)
+
+@app.get("/doc-type")
+def doc_type():
+    if "chunks" not in store:
+        raise HTTPException(status_code=400, detail="Please upload a PDF first.")
+    result = classify_document(store["chunks"])
+    if result is None:
+        raise HTTPException(status_code=400, detail="Classifier not trained yet.")
+    return result

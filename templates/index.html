@@ -145,12 +145,22 @@
         const data = await response.json();
 
         if (response.ok) {
-          setStatus(uploadStatus,
-            "Done! " + data.filename + ": " + data.pages + " pages, " + data.chunks + " chunks.",
-            "ok");
-        } else {
-          setStatus(uploadStatus, data.detail || "Upload failed.", "error");
-        }
+  setStatus(uploadStatus,
+    "Done! " + data.filename + ": " + data.pages + " pages, " + data.chunks + " chunks.",
+    "ok");
+
+  try {
+    const r = await fetch("/doc-type");
+    if (r.ok) {
+      const d = await r.json();
+      uploadStatus.textContent += "  Document type: " + d.type +
+        " (" + Math.round(d.confidence * 100) + "% sure)";
+    }
+  } catch (e) {}
+
+} else {
+  setStatus(uploadStatus, data.detail || "Upload failed.", "error");
+}
       } catch (err) {
         setStatus(uploadStatus, "Could not reach the server.", "error");
       }
