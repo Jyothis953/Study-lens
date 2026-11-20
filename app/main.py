@@ -8,6 +8,7 @@ from app.chunking import chunk_text
 from app.search import build_index, search
 from app.qa import get_answer
 from app.nlp_features import get_keywords, summarize, get_entities
+from app.topics import cluster_topics
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -67,3 +68,9 @@ def insights():
         "summary": summarize(chunks),
         "entities": get_entities(chunks),
     }
+
+@app.get("/topics")
+def topics(n: int = 4):
+    if "chunks" not in store:
+        raise HTTPException(status_code=400, detail="Please upload a PDF first.")
+    return cluster_topics(store["chunks"], store["embeddings"], n)
