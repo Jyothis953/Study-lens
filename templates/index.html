@@ -32,6 +32,13 @@
       border-radius: 6px;
       margin-bottom: 10px;
     }
+    select {
+      width: 100%;
+      padding: 8px;
+      font-size: 15px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+    }
     button {
       background: #2563eb;
       color: white;
@@ -43,6 +50,8 @@
     }
     button:hover { background: #1d4ed8; }
     button:disabled { background: #9ca3af; cursor: not-allowed; }
+    .danger { background: #b91c1c; margin-top: 10px; }
+    .danger:hover { background: #991b1b; }
     .status { margin-top: 10px; font-size: 14px; }
     .ok { color: #15803d; }
     .error { color: #b91c1c; }
@@ -56,8 +65,9 @@
       color: #374151;
     }
     .hidden { display: none; }
+    .divider { border: none; border-top: 1px solid #e5e7eb; margin: 20px 0; }
 
-        .bar-row { margin: 12px 0; }
+    .bar-row { margin: 12px 0; }
     .bar-label { font-size: 14px; margin-bottom: 3px; }
     .bar-track { background: #e5e7eb; border-radius: 6px; height: 14px; }
     .bar-fill { background: #2563eb; height: 14px; border-radius: 6px; }
@@ -68,13 +78,19 @@
     <h1>StudyLens</h1>
     <p class="subtitle">Upload a PDF and ask questions about it.</p>
 
-    <!-- Step 1: upload -->
+    <!-- Step 1: upload + document list -->
     <div class="card">
       <h2>1. Upload your PDF</h2>
       <input type="file" id="pdfFile" accept=".pdf">
       <br><br>
       <button id="uploadBtn">Upload</button>
       <div id="uploadStatus" class="status"></div>
+
+      <hr class="divider">
+
+      <p style="margin-top:0; margin-bottom:5px;"><b>Your documents:</b></p>
+      <select id="docSelect"></select>
+      <button id="deleteBtn" class="danger">Delete selected</button>
     </div>
 
     <!-- Step 2: ask -->
@@ -85,7 +101,8 @@
       <div id="askStatus" class="status"></div>
     </div>
 
-        <div class="card">
+    <!-- Step 3: insights -->
+    <div class="card">
       <h2>3. Document insights</h2>
       <button id="insightsBtn">Get insights</button>
       <div id="insightsStatus" class="status"></div>
@@ -98,7 +115,8 @@
       </div>
     </div>
 
-        <div class="card">
+    <!-- Step 4: topics -->
+    <div class="card">
       <h2>4. Topics in your document</h2>
       <button id="topicsBtn">Find topics</button>
       <div id="topicsStatus" class="status"></div>
@@ -126,6 +144,41 @@
       element.className = "status " + type;
     }
 
+    // ---------- Document list ----------
+    const docSelect = document.getElementById("docSelect");
+    const deleteBtn = document.getElementById("deleteBtn");
+
+    async function loadDocuments(selectId) {
+      try {
+        const res = await fetch("/documents");
+        const docs = await res.json();
+        docSelect.innerHTML = "";
+        docs.forEach(d => {
+          const opt = document.createElement("option");
+          opt.value = d.id;
+          opt.textContent = d.filename + " (" + d.pages + " pages)";
+          docSelect.appendChild(opt);
+        });
+        if (selectId) docSelect.value = selectId;
+      } catch (err) {
+        console.error("Could not load documents", err);
+      }
+    }
+
+    function currentDocId() {
+      return docSelect.value;
+    }
+
+    deleteBtn.addEventListener("click", async () => {
+      const id = currentDocId();
+      if (!id) return;
+      if (!confirm("Delete this document?")) return;
+      await fetch("/documents/" + id, { method: "DELETE" });
+      loadDocuments();
+    });
+
+    loadDocuments();
+
     // ---------- Upload ----------
     uploadBtn.addEventListener("click", async () => {
       const file = document.getElementById("pdfFile").files[0];
@@ -145,22 +198,23 @@
         const data = await response.json();
 
         if (response.ok) {
-  setStatus(uploadStatus,
-    "Done! " + data.filename + ": " + data.pages + " pages, " + data.chunks + " chunks.",
-    "ok");
+          setStatus(uploadStatus,
+            "Done! " + data.filename + ": " + data.pages + " pages, " + data.chunks + " chunks.",
+            "ok");
+          await loadDocuments(data.id);
 
-  try {
-    const r = await fetch("/doc-type");
-    if (r.ok) {
-      const d = await r.json();
-      uploadStatus.textContent += "  Document type: " + d.type +
-        " (" + Math.round(d.confidence * 100) + "% sure)";
-    }
-  } catch (e) {}
+          try {
+            const r = await fetch("/doc-type?doc_id=" + data.id);
+            if (r.ok) {
+              const d = await r.json();
+              uploadStatus.textContent += "  Document type: " + d.type +
+                " (" + Math.round(d.confidence * 100) + "% sure)";
+            }
+          } catch (e) {}
 
-} else {
-  setStatus(uploadStatus, data.detail || "Upload failed.", "error");
-}
+        } else {
+          setStatus(uploadStatus, data.detail || "Upload failed.", "error");
+        }
       } catch (err) {
         setStatus(uploadStatus, "Could not reach the server.", "error");
       }
@@ -174,13 +228,19 @@
         setStatus(askStatus, "Please type a question.", "error");
         return;
       }
+      if (!currentDocId()) {
+        setStatus(askStatus, "Please upload or select a document first.", "error");
+        return;
+      }
 
       askBtn.disabled = true;
       answerCard.classList.add("hidden");
       setStatus(askStatus, "Thinking...", "");
 
       try {
-        const response = await fetch("/ask?question=" + encodeURIComponent(question));
+        const response = await fetch(
+          "/ask?question=" + encodeURIComponent(question) + "&doc_id=" + currentDocId()
+        );
         const data = await response.json();
 
         if (!response.ok) {
@@ -209,14 +269,20 @@
       if (e.key === "Enter") askQuestion();
     });
 
-        const insightsBtn = document.getElementById("insightsBtn");
+    // ---------- Insights ----------
+    const insightsBtn = document.getElementById("insightsBtn");
     const insightsStatus = document.getElementById("insightsStatus");
 
     insightsBtn.addEventListener("click", async () => {
+      if (!currentDocId()) {
+        setStatus(insightsStatus, "Please upload or select a document first.", "error");
+        return;
+      }
+
       insightsBtn.disabled = true;
       setStatus(insightsStatus, "Analysing... please wait.", "");
       try {
-        const response = await fetch("/insights");
+        const response = await fetch("/insights?doc_id=" + currentDocId());
         const data = await response.json();
         if (!response.ok) {
           setStatus(insightsStatus, data.detail || "Something went wrong.", "error");
@@ -248,20 +314,28 @@
       insightsBtn.disabled = false;
     });
 
-        const topicsBtn = document.getElementById("topicsBtn");
+    // ---------- Topics ----------
+    const topicsBtn = document.getElementById("topicsBtn");
     const topicsStatus = document.getElementById("topicsStatus");
 
     topicsBtn.addEventListener("click", async () => {
+      if (!currentDocId()) {
+        setStatus(topicsStatus, "Please upload or select a document first.", "error");
+        return;
+      }
+
       topicsBtn.disabled = true;
       setStatus(topicsStatus, "Finding topics...", "");
       try {
-        const response = await fetch("/topics");
+        const response = await fetch("/topics?doc_id=" + currentDocId());
         const data = await response.json();
         const box = document.getElementById("topicsBox");
         box.innerHTML = "";
 
         if (!response.ok) {
           setStatus(topicsStatus, data.detail || "Something went wrong.", "error");
+        } else if (data.length === 0) {
+          setStatus(topicsStatus, "This document is too short to find topics.", "error");
         } else {
           setStatus(topicsStatus, "", "");
           const biggest = Math.max(...data.map(t => t.size));

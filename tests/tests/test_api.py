@@ -10,9 +10,9 @@ def test_home_page_loads():
     assert response.status_code == 200
 
 
-def test_ask_without_upload_gives_error():
-    response = client.get("/ask", params={"question": "hello"})
-    assert response.status_code == 400
+def test_ask_unknown_document_gives_404():
+    response = client.get("/ask", params={"question": "hello", "doc_id": 999999})
+    assert response.status_code == 404
 
 
 def test_upload_rejects_non_pdf():

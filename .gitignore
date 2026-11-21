@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 .env
 training_data/
+studylens.db

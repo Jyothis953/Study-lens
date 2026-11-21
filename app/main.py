@@ -10,14 +10,22 @@ from app.qa import get_answer
 from app.nlp_features import get_keywords, summarize, get_entities
 from app.topics import cluster_topics
 from app.classifier import classify_document
-
+from app.database import (
+    init_db, save_document, list_documents, load_document, delete_document,
+)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 app = FastAPI(title="StudyLens")
+init_db()
 
-# Simple memory: holds the current document while the server runs
-store = {}
+
+def get_doc(doc_id: int):
+    """Load a document from the database or raise a clear error."""
+    loaded = load_document(doc_id)
+    if loaded is None:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    return loaded
 
 
 @app.get("/")
@@ -40,48 +48,55 @@ async def upload(file: UploadFile = File(...)):
             detail="No text found. This PDF may be a scanned image.",
         )
 
-    store["chunks"] = chunks
-    store["embeddings"] = build_index(chunks)
+    embeddings = build_index(chunks)
+    doc_id = save_document(file.filename, len(pages), chunks, embeddings)
 
     return {
+        "id": doc_id,
         "filename": file.filename,
         "pages": len(pages),
         "chunks": len(chunks),
     }
 
 
-@app.get("/ask")
-def ask(question: str):
-    if "chunks" not in store:
-        raise HTTPException(status_code=400, detail="Please upload a PDF first.")
+@app.get("/documents")
+def documents():
+    return list_documents()
 
-    hits = search(question, store["chunks"], store["embeddings"])
+
+@app.delete("/documents/{doc_id}")
+def remove_document(doc_id: int):
+    delete_document(doc_id)
+    return {"deleted": doc_id}
+
+
+@app.get("/ask")
+def ask(question: str, doc_id: int):
+    chunks, embeddings = get_doc(doc_id)
+    hits = search(question, chunks, embeddings)
     return get_answer(question, hits)
 
 
 @app.get("/insights")
-def insights():
-    if "chunks" not in store:
-        raise HTTPException(status_code=400, detail="Please upload a PDF first.")
-
-    chunks = store["chunks"]
+def insights(doc_id: int):
+    chunks, _ = get_doc(doc_id)
     return {
         "keywords": get_keywords(chunks),
         "summary": summarize(chunks),
         "entities": get_entities(chunks),
     }
 
+
 @app.get("/topics")
-def topics(n: int = 4):
-    if "chunks" not in store:
-        raise HTTPException(status_code=400, detail="Please upload a PDF first.")
-    return cluster_topics(store["chunks"], store["embeddings"], n)
+def topics(doc_id: int, n: int = 4):
+    chunks, embeddings = get_doc(doc_id)
+    return cluster_topics(chunks, embeddings, n)
+
 
 @app.get("/doc-type")
-def doc_type():
-    if "chunks" not in store:
-        raise HTTPException(status_code=400, detail="Please upload a PDF first.")
-    result = classify_document(store["chunks"])
+def doc_type(doc_id: int):
+    chunks, _ = get_doc(doc_id)
+    result = classify_document(chunks)
     if result is None:
         raise HTTPException(status_code=400, detail="Classifier not trained yet.")
     return result
